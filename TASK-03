@@ -1,0 +1,75 @@
+BACKEND CODE:
+
+const express = require('express');
+const http = require('http');
+const WebSocket = require('ws');
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+let documentContent = "";
+const clients = new Set();
+const broadcast = (message, sender) => {
+    for (const client of clients) {
+        if (client !== sender && client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify(message));
+        }
+    }
+};
+wss.on('connection', (ws) => {
+    clients.add(ws);
+    ws.send(JSON.stringify({ type: 'init', content: documentContent }));
+    ws.on('message', (message) => {
+        const data = JSON.parse(message);
+
+        if (data.type === 'edit') {
+            documentContent = data.content; // Update document state
+            broadcast(data, ws); // Broadcast changes to others
+        }
+    });
+
+    ws.on('close', () => {
+        clients.delete(ws);
+    });
+});
+app.use(express.static('public'));
+
+
+FRONTEND CODE:
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collaborative Document Editor</title>
+</head>
+<body>
+    <textarea id="editor" rows="20" cols="80"></textarea>
+    <script>
+        const editor = document.getElementById('editor');
+        const ws = new WebSocket('ws://localhost:3000');
+
+        // Handle WebSocket messages
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'init') {
+                editor.value = data.content; // Load initial document state
+            } else if (data.type === 'edit') {
+                editor.value = data.content; // Update editor content
+            }
+        };
+
+        // Handle editor input
+        editor.addEventListener('input', () => {
+            const content = editor.value;
+            ws.send(JSON.stringify({ type: 'edit', content }));
+        });
+    </script>
+</body>
+</html>
+
+// Start server
+const PORT = 3000;
+server.listen(PORT, () => {
+    console.log(Server running on http://localhost:${PORT});
+});
